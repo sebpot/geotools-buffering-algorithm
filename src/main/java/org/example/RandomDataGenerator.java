@@ -10,14 +10,15 @@ import java.util.ArrayList;
 
 public class RandomDataGenerator {
     public SimpleFeatureType featureType;
+    private GeometryFactory geometryFactory;
 
     public RandomDataGenerator(){
         SimpleFeatureTypeBuilder builder = new SimpleFeatureTypeBuilder();
         builder.setName("CustomFeatureType");
-
         builder.add("the_geom", Geometry.class);
-
         featureType = builder.buildFeatureType();
+
+        geometryFactory = new GeometryFactory();
     }
 
     public SimpleFeature createPointFeature() {
@@ -27,10 +28,8 @@ public class RandomDataGenerator {
         double longitude = (Math.random() * 360.0) - 180.0;
         //double latitude = (Math.random() * 20.0) - 10.0;
         //double longitude = (Math.random() * 40.0) - 20.0;
-
-        GeometryFactory geometryFactory = new GeometryFactory();
         /* Longitude (= x coord) first ! */
-        Point point = geometryFactory.createPoint(new Coordinate(longitude, latitude));
+        Point point = this.geometryFactory.createPoint(new Coordinate(longitude, latitude));
 
         featureBuilder.set("the_geom", point);
   /*  featureBuilder.add(name);
@@ -47,10 +46,9 @@ public class RandomDataGenerator {
         return feature;
     }
 
-    public static LineString createRandomLineString(int n) {
+    public LineString createRandomLineString(int n) {
         double latitude = (Math.random() * 180.0) - 90.0;
         double longitude = (Math.random() * 360.0) - 180.0;
-        GeometryFactory geometryFactory = new GeometryFactory();
         /* Longitude (= x coord) first ! */
         ArrayList<Coordinate> points = new ArrayList<Coordinate>();
         points.add(new Coordinate(longitude, latitude));
@@ -61,7 +59,7 @@ public class RandomDataGenerator {
             latitude += deltaY;
             points.add(new Coordinate(longitude, latitude));
         }
-        LineString line = geometryFactory.createLineString((Coordinate[]) points.toArray(new Coordinate[] {}));
+        LineString line = this.geometryFactory.createLineString((Coordinate[]) points.toArray(new Coordinate[] {}));
         return line;
     }
 
@@ -75,10 +73,9 @@ public class RandomDataGenerator {
     }
 
 
-    public static Polygon createRandomPolygon(int n) {
+    public Polygon createRandomPolygon(int n) {
         double latitude = (Math.random() * 180.0) - 90.0;
         double longitude = (Math.random() * 360.0) - 180.0;
-        GeometryFactory geometryFactory = new GeometryFactory();
         /* Longitude (= x coord) first ! */
         Polygon poly = null;
         boolean valid = false;
@@ -95,7 +92,7 @@ public class RandomDataGenerator {
                 points.add(new Coordinate(lon, lat));
             }
             points.add(new Coordinate(longitude, latitude));
-            poly = geometryFactory.createPolygon((Coordinate[]) points.toArray(new Coordinate[] {}));
+            poly = this.geometryFactory.createPolygon((Coordinate[]) points.toArray(new Coordinate[] {}));
             valid = poly.isValid();
         }
         return poly;

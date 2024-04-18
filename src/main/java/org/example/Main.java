@@ -5,7 +5,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.logging.Logger;
+import javax.swing.*;
 
 import org.geotools.api.data.FileDataStore;
 import org.geotools.api.data.FileDataStoreFinder;
@@ -36,20 +38,69 @@ public class Main {
     private static final double POINT_NUMBER = 10;
     private static final double LINE_NUMBER = 10;
     private static final double POLYGON_NUMBER = 5;
-    private static final Logger LOGGER = org.geotools.util.logging.Logging.getLogger(Main.class);
+
+    public static boolean chooseDataInput() {
+        String[] choices = {"Load from file", "Generate random data"};
+
+        JFrame frame = new JFrame("Map data");
+        String selectedChoice = (String) JOptionPane.showInputDialog(frame,
+                "Choose one",
+                "Choose data input",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                choices,
+                choices[0]);
+
+        return selectedChoice.equals(choices[0]);
+    }
 
     public static SimpleFeatureSource getFeaturesFromFile() throws IOException {
-        LOGGER.info( "Quickstart");
-        LOGGER.config( "Welcome Developers");
-        LOGGER.info("java.util.logging.config.file="+System.getProperty("java.util.logging.config.file"));
         File file = JFileDataStoreChooser.showOpenFile("csv", null);
         if (file == null) {
             return null;
         }
-        LOGGER.config("File selected "+file);
 
         FileDataStore store = FileDataStoreFinder.getDataStore(file);
         return store.getFeatureSource();
+    }
+
+    public static Style createRandomDataStyle() {
+        StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
+        FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
+
+        // Create a Style for points
+        Mark mark = styleFactory.getCircleMark();
+        mark.setStroke(styleFactory.createStroke(filterFactory.literal(Color.BLACK), filterFactory.literal(2)));
+        mark.setFill(styleFactory.createFill(filterFactory.literal(Color.BLACK)));
+
+        Graphic graphic = styleFactory.createDefaultGraphic();
+        graphic.graphicalSymbols().clear();
+        graphic.graphicalSymbols().add(mark);
+        graphic.setSize(filterFactory.literal(2));
+
+        PointSymbolizer pointSymbolizer = styleFactory.createPointSymbolizer(graphic, null);
+
+        // Create a Style for lines
+        Stroke stroke = styleFactory.createStroke(
+                filterFactory.literal(Color.BLACK),
+                filterFactory.literal(1)
+        );
+
+        LineSymbolizer lineSymbolizer = styleFactory.createLineSymbolizer(stroke, null);
+
+        //Create Style
+        FeatureTypeStyle featureTypeStyle = styleFactory.createFeatureTypeStyle();
+        Rule pointRule = styleFactory.createRule();
+        pointRule.symbolizers().add(pointSymbolizer);
+        featureTypeStyle.rules().add(pointRule);
+
+        Rule lineRule = styleFactory.createRule();
+        lineRule.symbolizers().add(lineSymbolizer);
+        featureTypeStyle.rules().add(lineRule);
+
+        Style style = styleFactory.createStyle();
+        style.featureTypeStyles().add(featureTypeStyle);
+        return style;
     }
 
     public static List<SimpleFeature> bufferFeatures(SimpleFeatureCollection features) {
@@ -84,7 +135,8 @@ public class Main {
     }
 
     public static void main(String[] args) throws IOException, CQLException {
-        boolean fromFile = false;
+        boolean fromFile = chooseDataInput();
+
         RandomDataGenerator randomDataGenerator = new RandomDataGenerator();
 
         SimpleFeatureCollection features;
@@ -115,55 +167,24 @@ public class Main {
         map.setTitle("Buffering algorithm");
 
         Style style = null;
-        StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
-        FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
         if(fromFile){
             style = SLD.createSimpleStyle(featureSource.getSchema());
         } else {
-            // Create a Style for points
-            Mark mark = styleFactory.getCircleMark();
-            mark.setStroke(styleFactory.createStroke(filterFactory.literal(Color.BLACK), filterFactory.literal(2)));
-            mark.setFill(styleFactory.createFill(filterFactory.literal(Color.BLACK)));
-
-            Graphic graphic = styleFactory.createDefaultGraphic();
-            graphic.graphicalSymbols().clear();
-            graphic.graphicalSymbols().add(mark);
-            graphic.setSize(filterFactory.literal(2));
-
-            PointSymbolizer pointSymbolizer = styleFactory.createPointSymbolizer(graphic, null);
-
-            // Create a Style for lines
-            Stroke stroke = styleFactory.createStroke(
-                    filterFactory.literal(Color.BLACK),
-                    filterFactory.literal(1)
-            );
-
-            LineSymbolizer lineSymbolizer = styleFactory.createLineSymbolizer(stroke, null);
-
-            //Create Style
-            FeatureTypeStyle featureTypeStyle = styleFactory.createFeatureTypeStyle();
-            Rule pointRule = styleFactory.createRule();
-            pointRule.symbolizers().add(pointSymbolizer);
-            featureTypeStyle.rules().add(pointRule);
-
-            Rule lineRule = styleFactory.createRule();
-            lineRule.symbolizers().add(lineSymbolizer);
-            featureTypeStyle.rules().add(lineRule);
-
-            style = styleFactory.createStyle();
-            style.featureTypeStyles().add(featureTypeStyle);
+            style = createRandomDataStyle();
         }
 
         //buffering
         boolean buffering = false;
         SimpleFeatureCollection bufferedFeatures = null;
         if(buffering){
+            SimpleFeatureType schema = null;
             if(fromFile){
-                bufferedFeatures = new ListFeatureCollection(featureSource.getSchema() ,bufferFeatures(features));
+                schema = featureSource.getSchema();
             }
             else{
-                bufferedFeatures = new ListFeatureCollection(randomDataGenerator.featureType, bufferFeatures(features));
+                schema = randomDataGenerator.featureType;
             }
+            bufferedFeatures = new ListFeatureCollection(schema, bufferFeatures(features));
         }
 
         Layer layer;

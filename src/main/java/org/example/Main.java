@@ -5,8 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.logging.Logger;
 import javax.swing.*;
 
 import org.geotools.api.data.FileDataStore;
@@ -14,15 +12,11 @@ import org.geotools.api.data.FileDataStoreFinder;
 import org.geotools.api.data.SimpleFeatureSource;
 import org.geotools.api.feature.simple.SimpleFeature;
 import org.geotools.api.feature.simple.SimpleFeatureType;
-import org.geotools.api.filter.FilterFactory;
 import org.geotools.api.style.*;
-import org.geotools.api.style.Stroke;
 import org.geotools.data.collection.ListFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
-import org.geotools.filter.text.cql2.CQLException;
 import org.geotools.map.FeatureLayer;
 import org.geotools.map.Layer;
 import org.geotools.map.MapContent;
@@ -55,52 +49,13 @@ public class Main {
     }
 
     public static SimpleFeatureSource getFeaturesFromFile() throws IOException {
-        File file = JFileDataStoreChooser.showOpenFile("csv", null);
+        File file = JFileDataStoreChooser.showOpenFile("shp", null);
         if (file == null) {
             return null;
         }
 
         FileDataStore store = FileDataStoreFinder.getDataStore(file);
         return store.getFeatureSource();
-    }
-
-    public static Style createRandomDataStyle() {
-        StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
-        FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
-
-        // Create a Style for points
-        Mark mark = styleFactory.getCircleMark();
-        mark.setStroke(styleFactory.createStroke(filterFactory.literal(Color.BLACK), filterFactory.literal(2)));
-        mark.setFill(styleFactory.createFill(filterFactory.literal(Color.BLACK)));
-
-        Graphic graphic = styleFactory.createDefaultGraphic();
-        graphic.graphicalSymbols().clear();
-        graphic.graphicalSymbols().add(mark);
-        graphic.setSize(filterFactory.literal(2));
-
-        PointSymbolizer pointSymbolizer = styleFactory.createPointSymbolizer(graphic, null);
-
-        // Create a Style for lines
-        Stroke stroke = styleFactory.createStroke(
-                filterFactory.literal(Color.BLACK),
-                filterFactory.literal(1)
-        );
-
-        LineSymbolizer lineSymbolizer = styleFactory.createLineSymbolizer(stroke, null);
-
-        //Create Style
-        FeatureTypeStyle featureTypeStyle = styleFactory.createFeatureTypeStyle();
-        Rule pointRule = styleFactory.createRule();
-        pointRule.symbolizers().add(pointSymbolizer);
-        featureTypeStyle.rules().add(pointRule);
-
-        Rule lineRule = styleFactory.createRule();
-        lineRule.symbolizers().add(lineSymbolizer);
-        featureTypeStyle.rules().add(lineRule);
-
-        Style style = styleFactory.createStyle();
-        style.featureTypeStyles().add(featureTypeStyle);
-        return style;
     }
 
     public static List<SimpleFeature> bufferFeatures(SimpleFeatureCollection features) {
@@ -134,50 +89,54 @@ public class Main {
         return bufferedFeaturesList;
     }
 
-    public static void main(String[] args) throws IOException, CQLException {
+    public static void main(String[] args) throws IOException {
         boolean fromFile = chooseDataInput();
 
         RandomDataGenerator randomDataGenerator = new RandomDataGenerator();
 
-        SimpleFeatureCollection features;
+        SimpleFeatureCollection features, pointFeatures = null;
         SimpleFeatureSource featureSource = null;
         if(fromFile){
             featureSource = getFeaturesFromFile();
             if(featureSource == null) return;
             features = featureSource.getFeatures();
         } else {
-            List<SimpleFeature> featuresList = new ArrayList<>();
+            List<SimpleFeature> pointsFeaturesList = new ArrayList<>();
+            List<SimpleFeature> linesAndPolysFeaturesList = new ArrayList<>();
             for(int i=0; i<POINT_NUMBER; i++){
-                featuresList.add(randomDataGenerator.createPointFeature());
+                pointsFeaturesList.add(randomDataGenerator.createPointFeature());
             }
 
             for(int i=0; i<LINE_NUMBER; i++){
-                featuresList.add(randomDataGenerator.createLineFeature());
+                linesAndPolysFeaturesList.add(randomDataGenerator.createLineFeature());
             }
 
             for(int i=0; i<POLYGON_NUMBER; i++){
-                featuresList.add(randomDataGenerator.createPolygonFeature());
+                linesAndPolysFeaturesList.add(randomDataGenerator.createPolygonFeature());
             }
 
-            features = new ListFeatureCollection(randomDataGenerator.featureType, featuresList);
+            features = new ListFeatureCollection(randomDataGenerator.featureType, linesAndPolysFeaturesList);
+            pointFeatures = new ListFeatureCollection(randomDataGenerator.featureType, pointsFeaturesList);
         }
 
         // Create a map content and add our shapefile to it
         MapContent map = new MapContent();
         map.setTitle("Buffering algorithm");
 
-        Style style = null;
+        Style style1;
+        Style style2 = null;
         if(fromFile){
-            style = SLD.createSimpleStyle(featureSource.getSchema());
+            style1 = SLD.createSimpleStyle(featureSource.getSchema());
         } else {
-            style = createRandomDataStyle();
+            style1 = SLD.createLineStyle(Color.BLACK, 1);
+            style2 = SLD.createPointStyle("Circle", Color.BLACK, Color.BLACK, 1, 2);
         }
 
         //buffering
         boolean buffering = false;
         SimpleFeatureCollection bufferedFeatures = null;
         if(buffering){
-            SimpleFeatureType schema = null;
+            SimpleFeatureType schema;
             if(fromFile){
                 schema = featureSource.getSchema();
             }
@@ -187,13 +146,17 @@ public class Main {
             bufferedFeatures = new ListFeatureCollection(schema, bufferFeatures(features));
         }
 
-        Layer layer;
+        Layer layer = null, layer2 = null;
         if(buffering){
-            layer = new FeatureLayer(bufferedFeatures, style);
+            layer = new FeatureLayer(bufferedFeatures, style1);
         } else {
-            layer = new FeatureLayer(features, style);
+            layer = new FeatureLayer(features, style1);
+            if(!fromFile){
+                layer2 = new FeatureLayer(pointFeatures, style2);
+            }
         }
         map.addLayer(layer);
+        if(!fromFile) map.addLayer(layer2);
 
         // Now display the map
         JMapFrame.showMap(map);

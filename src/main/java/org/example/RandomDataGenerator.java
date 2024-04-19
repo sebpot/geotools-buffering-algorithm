@@ -10,7 +10,8 @@ import java.util.ArrayList;
 
 public class RandomDataGenerator {
     public SimpleFeatureType featureType;
-    private GeometryFactory geometryFactory;
+    public SimpleFeatureBuilder featureBuilder;
+    private final GeometryFactory geometryFactory;
 
     public RandomDataGenerator(){
         SimpleFeatureTypeBuilder builder = new SimpleFeatureTypeBuilder();
@@ -18,82 +19,80 @@ public class RandomDataGenerator {
         builder.add("the_geom", Geometry.class);
         featureType = builder.buildFeatureType();
 
+        featureBuilder = new SimpleFeatureBuilder(featureType);
         geometryFactory = new GeometryFactory();
     }
 
     public SimpleFeature createPointFeature() {
-        SimpleFeatureBuilder featureBuilder = new SimpleFeatureBuilder(featureType);
-
         double latitude = (Math.random() * 180.0) - 90.0;
         double longitude = (Math.random() * 360.0) - 180.0;
-        //double latitude = (Math.random() * 20.0) - 10.0;
-        //double longitude = (Math.random() * 40.0) - 20.0;
-        /* Longitude (= x coord) first ! */
         Point point = this.geometryFactory.createPoint(new Coordinate(longitude, latitude));
 
-        featureBuilder.set("the_geom", point);
-  /*  featureBuilder.add(name);
-    featureBuilder.add(number);*/
-        return featureBuilder.buildFeature(null);
+        this.featureBuilder.set("the_geom", point);
+        return this.featureBuilder.buildFeature(null);
     }
 
     public SimpleFeature createLineFeature() {
-        SimpleFeatureBuilder featureBuilder = new SimpleFeatureBuilder(featureType);
-        LineString line = createRandomLineString(5);
-        featureBuilder.add(line);
+        int n = (int) ((Math.random() * 3) + 4);
+        LineString line = createRandomLineString(n);
+        this.featureBuilder.set("the_geom", line);
 
-        SimpleFeature feature = featureBuilder.buildFeature(null);
-        return feature;
+        return this.featureBuilder.buildFeature(null);
     }
 
     public LineString createRandomLineString(int n) {
         double latitude = (Math.random() * 180.0) - 90.0;
         double longitude = (Math.random() * 360.0) - 180.0;
-        /* Longitude (= x coord) first ! */
-        ArrayList<Coordinate> points = new ArrayList<Coordinate>();
-        points.add(new Coordinate(longitude, latitude));
+
+        Coordinate[] coords = new Coordinate[n];
+        coords[0] = new Coordinate(longitude, latitude);
+
         for (int i = 1; i < n; i++) {
-            double deltaX = (Math.random() * 30.0) - 5.0;
-            double deltaY = (Math.random() * 30.0) - 5.0;
+            double deltaX = (Math.random() * 20.0);
+            double deltaY = (Math.random() * 20.0);
             longitude += deltaX;
-            latitude += deltaY;
-            points.add(new Coordinate(longitude, latitude));
+            if(Math.random() > 0.5) latitude -= deltaY;
+            else latitude += deltaY;
+            coords[i] = new Coordinate(longitude, latitude);
         }
-        LineString line = this.geometryFactory.createLineString((Coordinate[]) points.toArray(new Coordinate[] {}));
-        return line;
+
+        return this.geometryFactory.createLineString(coords);
     }
 
     public SimpleFeature createPolygonFeature() {
-        SimpleFeatureBuilder featureBuilder = new SimpleFeatureBuilder(featureType);
-        Polygon poly = createRandomPolygon(5);
-        featureBuilder.add(poly);
+        int n = (int) ((Math.random() * 5) + 4);
+        Polygon poly = createRandomPolygon(n);
+        this.featureBuilder.add(poly);
 
-        SimpleFeature feature = featureBuilder.buildFeature(null);
-        return feature;
+        return this.featureBuilder.buildFeature(null);
     }
 
 
     public Polygon createRandomPolygon(int n) {
-        double latitude = (Math.random() * 180.0) - 90.0;
-        double longitude = (Math.random() * 360.0) - 180.0;
-        /* Longitude (= x coord) first ! */
+        double startingLatitude = (Math.random() * 180.0) - 90.0;
+        double startingLongitude = (Math.random() * 360.0) - 180.0;
+
         Polygon poly = null;
-        boolean valid = false;
-        while (!valid) {
-            ArrayList<Coordinate> points = new ArrayList<Coordinate>();
-            points.add(new Coordinate(longitude, latitude));
-            double lon = longitude;
-            double lat = latitude;
-            for (int i = 1; i < n; i++) {
-                double deltaX = (Math.random() * 30.0) - 5.0;
-                double deltaY = (Math.random() * 30.0) - 5.0;
-                lon += deltaX;
-                lat += deltaY;
-                points.add(new Coordinate(lon, lat));
+        boolean isValid = false;
+        while (!isValid) {
+            Coordinate[] coords = new Coordinate[n];
+            coords[0] = new Coordinate(startingLongitude, startingLatitude);
+
+            double longitude = startingLongitude;
+            double latitude = startingLatitude;
+
+            for (int i = 1; i < n - 1; i++) {
+                double deltaX = (Math.random() * 20.0);
+                double deltaY = (Math.random() * 20.0);
+                longitude += deltaX;
+                if(i > n/2) latitude -= deltaY;
+                else latitude += deltaY;
+                coords[i] = new Coordinate(longitude, latitude);
             }
-            points.add(new Coordinate(longitude, latitude));
-            poly = this.geometryFactory.createPolygon((Coordinate[]) points.toArray(new Coordinate[] {}));
-            valid = poly.isValid();
+            coords[n-1] = new Coordinate(startingLongitude, startingLatitude);
+
+            poly = this.geometryFactory.createPolygon(coords);
+            isValid = poly.isValid();
         }
         return poly;
     }

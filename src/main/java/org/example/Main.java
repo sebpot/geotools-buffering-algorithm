@@ -1,37 +1,59 @@
 package org.example;
 
-import java.awt.*;
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.swing.*;
 
-import org.geotools.api.data.FileDataStore;
-import org.geotools.api.data.FileDataStoreFinder;
-import org.geotools.api.data.SimpleFeatureSource;
+import org.geotools.api.data.*;
 import org.geotools.api.feature.simple.SimpleFeature;
 import org.geotools.api.feature.simple.SimpleFeatureType;
+import org.geotools.api.feature.type.FeatureType;
+import org.geotools.api.filter.FilterFactory;
+import org.geotools.api.referencing.FactoryException;
+import org.geotools.api.referencing.crs.CoordinateReferenceSystem;
 import org.geotools.api.style.*;
+import org.geotools.api.style.Stroke;
+import org.geotools.data.DefaultTransaction;
 import org.geotools.data.collection.ListFeatureCollection;
+import org.geotools.data.shapefile.ShapefileDataStore;
+import org.geotools.data.shapefile.ShapefileDataStoreFactory;
 import org.geotools.data.simple.SimpleFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.feature.simple.SimpleFeatureBuilder;
+import org.geotools.factory.CommonFactoryFinder;
+import org.geotools.feature.SchemaException;
+import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
 import org.geotools.map.FeatureLayer;
 import org.geotools.map.Layer;
 import org.geotools.map.MapContent;
-import org.geotools.styling.SLD;
+import org.geotools.referencing.CRS;
 import org.geotools.swing.JMapFrame;
 import org.geotools.swing.data.JFileDataStoreChooser;
-import org.locationtech.jts.geom.Geometry;
-import org.locationtech.jts.operation.buffer.BufferOp;
+import org.locationtech.jts.geom.Polygon;
+
+import static org.example.BufferFactory.bufferFeatures;
 
 public class Main {
+    private static final String EPSG4326 = "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.01745329251994328,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]";
+    static CoordinateReferenceSystem worldCRS;
 
-    private static final double BUFFER_DISTANCE = 0.01;
+    static {
+        try {
+            worldCRS = CRS.parseWKT(EPSG4326);
+        } catch (FactoryException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static final double POINT_NUMBER = 10;
     private static final double LINE_NUMBER = 10;
     private static final double POLYGON_NUMBER = 5;
+
+    public Main() throws FactoryException {
+    }
 
     public static boolean chooseDataInput() {
         String[] choices = {"Load from file", "Generate random data"};
@@ -58,38 +80,66 @@ public class Main {
         return store.getFeatureSource();
     }
 
-    public static List<SimpleFeature> bufferFeatures(SimpleFeatureCollection features) {
-        List<SimpleFeature> bufferedFeaturesList = new ArrayList<>();
+    public static void exportToShapefile(SimpleFeatureCollection collection, SimpleFeatureType type) throws IOException {
+        File newFile = new File("export2.shp");
 
-        SimpleFeatureIterator iterator = features.features();
+        ShapefileDataStoreFactory dataStoreFactory = new ShapefileDataStoreFactory();
 
-        try {
-            while (iterator.hasNext()) {
-                SimpleFeature feature = iterator.next();
+        Map<String, Serializable> params = new HashMap<>();
+        params.put("url", newFile.toURI().toURL());
+        params.put("create spatial index", Boolean.TRUE);
 
-                SimpleFeatureType featureType = feature.getFeatureType();
-                SimpleFeatureBuilder featureBuilder = new SimpleFeatureBuilder(featureType);
+        ShapefileDataStore newDataStore =
+                (ShapefileDataStore) dataStoreFactory.createNewDataStore(params);
 
-                Geometry geom = (Geometry) feature.getDefaultGeometry();
-                /*... do something here */
-                for (int i = 0; i < featureType.getAttributeCount(); i++) {
-                    String attributeName = featureType.getDescriptor(i).getLocalName();
-                    featureBuilder.set(attributeName, feature.getAttribute(attributeName));
-                }
-                BufferOp bufferOp = new BufferOp(geom);
-                featureBuilder.set("the_geom", bufferOp.getResultGeometry(BUFFER_DISTANCE));
-                SimpleFeature bufferedFeature = featureBuilder.buildFeature(feature.getID());
+        /*
+         * TYPE is used as a template to describe the file contents
+         */
+        newDataStore.createSchema(type);
 
-                bufferedFeaturesList.add(bufferedFeature);
+        Transaction transaction = new DefaultTransaction("create");
+
+        String typeName = newDataStore.getTypeNames()[0];
+        SimpleFeatureSource featureSource = newDataStore.getFeatureSource(typeName);
+        SimpleFeatureType SHAPE_TYPE = featureSource.getSchema();
+        /*
+         * The Shapefile format has a couple limitations:
+         * - "the_geom" is always first, and used for the geometry attribute name
+         * - "the_geom" must be of type Point, MultiPoint, MuiltiLineString, MultiPolygon
+         * - Attribute names are limited in length
+         * - Not all data types are supported (example Timestamp represented as Date)
+         *
+         * Each data store has different limitations so check the resulting SimpleFeatureType.
+         */
+        System.out.println("SHAPE:" + SHAPE_TYPE);
+
+        if (featureSource instanceof SimpleFeatureStore) {
+            SimpleFeatureStore featureStore = (SimpleFeatureStore) featureSource;
+            /*
+             * SimpleFeatureStore has a method to add features from a
+             * SimpleFeatureCollection object, so we use the ListFeatureCollection
+             * class to wrap our list of features.
+             */
+            featureStore.setTransaction(transaction);
+            try {
+                featureStore.addFeatures(collection);
+                transaction.commit();
+            } catch (Exception problem) {
+                problem.printStackTrace();
+                transaction.rollback();
+            } finally {
+                transaction.close();
             }
-        } finally {
-            iterator.close(); // IMPORTANT
+            System.exit(0); // success!
+        } else {
+            System.out.println(typeName + " does not support read/write access");
+            System.exit(1);
         }
-
-        return bufferedFeaturesList;
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, FactoryException, SchemaException {
+        System.setProperty("org.geotools.referencing.forceXY", "true");
+
         boolean fromFile = chooseDataInput();
 
         RandomDataGenerator randomDataGenerator = new RandomDataGenerator();
@@ -123,40 +173,52 @@ public class Main {
         MapContent map = new MapContent();
         map.setTitle("Buffering algorithm");
 
-        Style style1;
-        Style style2 = null;
-        if(fromFile){
-            style1 = SLD.createSimpleStyle(featureSource.getSchema());
-        } else {
-            style1 = SLD.createLineStyle(Color.BLACK, 1);
-            style2 = SLD.createPointStyle("Circle", Color.BLACK, Color.BLACK, 1, 2);
-        }
+        Style style;
+        StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
+        FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
+
+        Stroke stroke = styleFactory.createStroke(
+                filterFactory.literal(java.awt.Color.BLACK),
+                filterFactory.literal(1) // Stroke width
+        );
+        Fill fill = styleFactory.createFill(filterFactory.literal(java.awt.Color.BLUE));
+        PolygonSymbolizer polygonSymbolizer = styleFactory.createPolygonSymbolizer(stroke, fill, null);
+        Rule rule = styleFactory.createRule();
+        rule.symbolizers().add(polygonSymbolizer);
+
+        FeatureTypeStyle featureTypeStyle = styleFactory.createFeatureTypeStyle(new Rule[]{rule});
+        style = styleFactory.createStyle();
+        style.featureTypeStyles().add(featureTypeStyle);
 
         //buffering
-        boolean buffering = false;
-        SimpleFeatureCollection bufferedFeatures = null;
-        if(buffering){
-            SimpleFeatureType schema;
-            if(fromFile){
-                schema = featureSource.getSchema();
-            }
-            else{
-                schema = randomDataGenerator.featureType;
-            }
-            bufferedFeatures = new ListFeatureCollection(schema, bufferFeatures(features));
+        SimpleFeatureCollection bufferedFeatures = null, bufferedFeatures2 = null;
+        SimpleFeatureType schema;
+        if(fromFile){
+            schema = featureSource.getSchema();
+        }
+        else{
+            schema = randomDataGenerator.featureType;
         }
 
+        SimpleFeatureTypeBuilder builder = new SimpleFeatureTypeBuilder();
+        builder.init(schema);
+        builder.remove("the_geom");
+        builder.add("the_geom", Polygon.class);
+        schema = builder.buildFeatureType();
+
+        bufferedFeatures = new ListFeatureCollection(schema, bufferFeatures(features));
+        if(!fromFile)
+            bufferedFeatures2 = new ListFeatureCollection(schema, bufferFeatures(pointFeatures));
+
+        //exportToShapefile(bufferedFeatures, schema);
+
         Layer layer = null, layer2 = null;
-        if(buffering){
-            layer = new FeatureLayer(bufferedFeatures, style1);
-        } else {
-            layer = new FeatureLayer(features, style1);
-            if(!fromFile){
-                layer2 = new FeatureLayer(pointFeatures, style2);
-            }
-        }
+        layer = new FeatureLayer(bufferedFeatures, style);
         map.addLayer(layer);
-        if(!fromFile) map.addLayer(layer2);
+        if(!fromFile) {
+            layer2 = new FeatureLayer(bufferedFeatures2, style);
+            map.addLayer(layer2);
+        }
 
         // Now display the map
         JMapFrame.showMap(map);

@@ -140,10 +140,12 @@ public class Main {
     public static void main(String[] args) throws IOException, FactoryException, SchemaException {
         System.setProperty("org.geotools.referencing.forceXY", "true");
 
+        //choose data input (file or generated data)
         boolean fromFile = chooseDataInput();
 
         RandomDataGenerator randomDataGenerator = new RandomDataGenerator();
 
+        //extract or create features
         SimpleFeatureCollection features, pointFeatures = null;
         SimpleFeatureSource featureSource = null;
         if(fromFile){
@@ -173,6 +175,7 @@ public class Main {
         MapContent map = new MapContent();
         map.setTitle("Buffering algorithm");
 
+        //create style for buffered features
         Style style;
         StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
         FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
@@ -190,7 +193,7 @@ public class Main {
         style = styleFactory.createStyle();
         style.featureTypeStyles().add(featureTypeStyle);
 
-        //buffering
+        //buffer features
         SimpleFeatureCollection bufferedFeatures = null, bufferedFeatures2 = null;
         SimpleFeatureType schema;
         if(fromFile){
@@ -212,6 +215,7 @@ public class Main {
 
         //exportToShapefile(bufferedFeatures, schema);
 
+        //create layers
         Layer layer = null, layer2 = null;
         layer = new FeatureLayer(bufferedFeatures, style);
         map.addLayer(layer);

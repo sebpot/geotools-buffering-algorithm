@@ -37,23 +37,9 @@ import org.locationtech.jts.geom.Polygon;
 import static org.example.BufferFactory.bufferFeatures;
 
 public class Main {
-    private static final String EPSG4326 = "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.01745329251994328,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]";
-    static CoordinateReferenceSystem worldCRS;
-
-    static {
-        try {
-            worldCRS = CRS.parseWKT(EPSG4326);
-        } catch (FactoryException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private static final double POINT_NUMBER = 10;
     private static final double LINE_NUMBER = 10;
     private static final double POLYGON_NUMBER = 5;
-
-    public Main() throws FactoryException {
-    }
 
     public static boolean chooseDataInput() {
         String[] choices = {"Load from file", "Generate random data"};
@@ -78,6 +64,27 @@ public class Main {
 
         FileDataStore store = FileDataStoreFinder.getDataStore(file);
         return store.getFeatureSource();
+    }
+
+    public static Style createStyleForBufferedFeatures() {
+        Style style;
+        StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
+        FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
+
+        Stroke stroke = styleFactory.createStroke(
+                filterFactory.literal(java.awt.Color.BLACK),
+                filterFactory.literal(1) // Stroke width
+        );
+        Fill fill = styleFactory.createFill(filterFactory.literal(java.awt.Color.BLUE));
+        PolygonSymbolizer polygonSymbolizer = styleFactory.createPolygonSymbolizer(stroke, fill, null);
+        Rule rule = styleFactory.createRule();
+        rule.symbolizers().add(polygonSymbolizer);
+
+        FeatureTypeStyle featureTypeStyle = styleFactory.createFeatureTypeStyle(new Rule[]{rule});
+        style = styleFactory.createStyle();
+        style.featureTypeStyles().add(featureTypeStyle);
+
+        return style;
     }
 
     public static void exportToShapefile(SimpleFeatureCollection collection, SimpleFeatureType type) throws IOException {
@@ -143,6 +150,9 @@ public class Main {
         //choose data input (file or generated data)
         boolean fromFile = chooseDataInput();
 
+        String input = JOptionPane.showInputDialog("Enter buffering distance");
+        double bufferDistance = Double.parseDouble(input);
+
         RandomDataGenerator randomDataGenerator = new RandomDataGenerator();
 
         //extract or create features
@@ -176,22 +186,7 @@ public class Main {
         map.setTitle("Buffering algorithm");
 
         //create style for buffered features
-        Style style;
-        StyleFactory styleFactory = CommonFactoryFinder.getStyleFactory();
-        FilterFactory filterFactory = CommonFactoryFinder.getFilterFactory();
-
-        Stroke stroke = styleFactory.createStroke(
-                filterFactory.literal(java.awt.Color.BLACK),
-                filterFactory.literal(1) // Stroke width
-        );
-        Fill fill = styleFactory.createFill(filterFactory.literal(java.awt.Color.BLUE));
-        PolygonSymbolizer polygonSymbolizer = styleFactory.createPolygonSymbolizer(stroke, fill, null);
-        Rule rule = styleFactory.createRule();
-        rule.symbolizers().add(polygonSymbolizer);
-
-        FeatureTypeStyle featureTypeStyle = styleFactory.createFeatureTypeStyle(new Rule[]{rule});
-        style = styleFactory.createStyle();
-        style.featureTypeStyles().add(featureTypeStyle);
+        Style style = createStyleForBufferedFeatures();
 
         //buffer features
         SimpleFeatureCollection bufferedFeatures = null, bufferedFeatures2 = null;
@@ -209,9 +204,9 @@ public class Main {
         builder.add("the_geom", Polygon.class);
         schema = builder.buildFeatureType();
 
-        bufferedFeatures = new ListFeatureCollection(schema, bufferFeatures(features));
+        bufferedFeatures = new ListFeatureCollection(schema, bufferFeatures(features, bufferDistance));
         if(!fromFile)
-            bufferedFeatures2 = new ListFeatureCollection(schema, bufferFeatures(pointFeatures));
+            bufferedFeatures2 = new ListFeatureCollection(schema, bufferFeatures(pointFeatures, bufferDistance));
 
         //exportToShapefile(bufferedFeatures, schema);
 

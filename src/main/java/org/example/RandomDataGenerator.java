@@ -28,8 +28,8 @@ public class RandomDataGenerator {
     }
 
     public SimpleFeature createPointFeature() {
-        double latitude = (Math.random() * 45.0);
-        double longitude = (Math.random() * 90.0);
+        double latitude = (Math.random() * 25.0);
+        double longitude = (Math.random() * 45.0);
         Point point = this.geometryFactory.createPoint(new Coordinate(longitude, latitude));
 
         this.featureBuilder.set("the_geom", point);
@@ -45,8 +45,8 @@ public class RandomDataGenerator {
     }
 
     public LineString createRandomLineString(int n) {
-        double latitude = (Math.random() * 45.0);
-        double longitude = (Math.random() * 90.0);
+        double latitude = (Math.random() * 25.0);
+        double longitude = (Math.random() * 45.0);
 
         Coordinate[] coords = new Coordinate[n];
         coords[0] = new Coordinate(longitude, latitude);
@@ -73,8 +73,8 @@ public class RandomDataGenerator {
 
 
     public Polygon createRandomPolygon(int n) {
-        double startingLatitude = (Math.random() * 45.0);
-        double startingLongitude = (Math.random() * 90.0);
+        double startingLatitude = (Math.random() * 25.0);
+        double startingLongitude = (Math.random() * 45.0);
 
         Polygon poly = null;
         boolean isValid = false;

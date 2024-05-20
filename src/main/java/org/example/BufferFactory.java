@@ -19,28 +19,24 @@ import org.geotools.referencing.CRS;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.locationtech.jts.algorithm.Angle;
 import org.locationtech.jts.geom.*;
-import org.locationtech.jts.geom.util.GeometryCombiner;
-import org.locationtech.jts.operation.union.UnaryUnionOp;
 
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 public class BufferFactory {
-    private static final double BUFFER_DISTANCE = 10.0;
 
-    private static Coordinate[] createCircleCoordinates(Coordinate center, double radius, int numCoords) {
-        Coordinate[] coords = new Coordinate[numCoords + 1];
-        double angleIncrement = 2 * Math.PI / numCoords;
+    private static Coordinate[] createCircleCoordinates(Coordinate center, double radius, int outerNumCoords) {
+        Coordinate[] coords = new Coordinate[outerNumCoords + 1];
+        double angleIncrement = 2 * Math.PI / outerNumCoords;
 
-        for (int i = 0; i < numCoords; i++) {
+        for (int i = 0; i < outerNumCoords; i++) {
             double angle = angleIncrement * i;
             double x = center.x + radius * Math.cos(angle);
             double y = center.y + radius * Math.sin(angle);
             coords[i] = new Coordinate(x, y);
         }
-        coords[numCoords] = new Coordinate(coords[0].x, coords[0].y);
+        coords[outerNumCoords] = new Coordinate(coords[0].x, coords[0].y);
 
         return coords;
     }
@@ -156,11 +152,12 @@ public class BufferFactory {
             LinearRing ring = factory.createLinearRing(ringCoords);
 
             // Create Polygon from the LinearRing
-            Polygon bufferedPolygon = factory.createPolygon(ring, null);
+            Polygon bufferedPolygon = factory.createPolygon(ring);
+            Polygon bufferedPoint = (Polygon) bufferPoint(factory.createPoint(new Coordinate(p1.x, p1.y)), distance, factory);
 
             // Add the buffered polygon to the list
             bufferedPolygons.add(bufferedPolygon);
-            bufferedPolygons.add((Polygon) bufferPoint(factory.createPoint(new Coordinate(p1.x, p1.y)), distance, factory));
+            bufferedPolygons.add(bufferedPoint);
         }
 
         // Combine buffered polygons into a single geometry
@@ -190,7 +187,7 @@ public class BufferFactory {
         }
     }
 
-    public static Geometry bufferGeom(CoordinateReferenceSystem origCRS, Geometry geom) throws FactoryException, TransformException {
+    public static Geometry bufferGeom(CoordinateReferenceSystem origCRS, Geometry geom, double bufferDistance) throws FactoryException, TransformException {
         if(geom.isEmpty()) return null;
         String code = "AUTO:42001," + geom.getCentroid().getCoordinate().x + "," + geom.getCentroid().getCoordinate().y;
         CoordinateReferenceSystem auto = CRS.decode(code);
@@ -199,54 +196,51 @@ public class BufferFactory {
         MathTransform fromTransform = CRS.findMathTransform(auto, DefaultGeographicCRS.WGS84);
 
         Geometry pGeom = JTS.transform(geom, toTransform);
-        Geometry pBufferedGeom = buffer(pGeom, BUFFER_DISTANCE);
-        //return pBufferedGeom;
+        Geometry pBufferedGeom = buffer(pGeom, bufferDistance);
         return JTS.transform(pBufferedGeom, fromTransform);
     }
-    public static SimpleFeature bufferFeature(SimpleFeature feature) throws FactoryException, TransformException {
+    public static SimpleFeature bufferFeature(SimpleFeature feature, double bufferDistance) throws FactoryException, TransformException {
         GeometryAttribute gProp = feature.getDefaultGeometryProperty();
         CoordinateReferenceSystem origCRS = gProp.getDescriptor().getCoordinateReferenceSystem();
 
         Geometry geom = (Geometry) feature.getDefaultGeometry();
-        //System.out.println(geom);
-        Geometry retGeom = bufferGeom(origCRS, geom);
-        //System.out.println(retGeom);
+        Geometry retGeom = bufferGeom(origCRS, geom, bufferDistance);
         SimpleFeatureType schema = feature.getFeatureType();
-        SimpleFeatureTypeBuilder ftBuilder = new SimpleFeatureTypeBuilder();
-        ftBuilder.setCRS(origCRS);
+        SimpleFeatureTypeBuilder featureBuilder = new SimpleFeatureTypeBuilder();
+        featureBuilder.setCRS(origCRS);
 
         for (AttributeDescriptor attrib : schema.getAttributeDescriptors()) {
             AttributeType type = attrib.getType();
 
             if (type instanceof GeometryType) {
                 String oldGeomAttrib = attrib.getLocalName();
-                ftBuilder.add(oldGeomAttrib, Polygon.class);
+                featureBuilder.add(oldGeomAttrib, Polygon.class);
             } else {
-                ftBuilder.add(attrib);
+                featureBuilder.add(attrib);
             }
         }
-        ftBuilder.setName(schema.getName());
+        featureBuilder.setName(schema.getName());
 
-        SimpleFeatureType nSchema = ftBuilder.buildFeatureType();
-        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(nSchema);
+        SimpleFeatureType newSchema = featureBuilder.buildFeatureType();
+        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(newSchema);
         java.util.List<Object> atts = feature.getAttributes();
         for (int i = 0; i < atts.size(); i++) {
             if (atts.get(i) instanceof Geometry) {
                 atts.set(i, retGeom);
             }
         }
-        SimpleFeature nFeature = builder.buildFeature(null, atts.toArray());
-        return nFeature;
+
+        return builder.buildFeature(null, atts.toArray());
     }
 
-    public static java.util.List<SimpleFeature> bufferFeatures(SimpleFeatureCollection features) {
+    public static java.util.List<SimpleFeature> bufferFeatures(SimpleFeatureCollection features, double bufferDistance) {
         List<SimpleFeature> bufferedFeaturesList = new ArrayList<>();
 
         SimpleFeatureIterator iterator = features.features();
         try {
             while (iterator.hasNext()) {
                 SimpleFeature feature = iterator.next();
-                bufferedFeaturesList.add(bufferFeature(feature));
+                bufferedFeaturesList.add(bufferFeature(feature, bufferDistance));
             }
         } catch (FactoryException e) {
             throw new RuntimeException(e);
@@ -255,6 +249,7 @@ public class BufferFactory {
         } finally {
             iterator.close();
         }
+
         return bufferedFeaturesList;
     }
 }
